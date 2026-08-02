@@ -1,5 +1,6 @@
 import { parseAndChunkPdf } from "../services/pdfService.js";
 import { processDocumentAndStore } from "../services/ragService.js";
+import { processMultimodalIngestion } from "../services/multimodalIngestionService.js";
 import crypto from "crypto";
 
 export const uploadPdfController = async (req, res, next) => {
@@ -18,6 +19,9 @@ export const uploadPdfController = async (req, res, next) => {
     const docId = `doc_${crypto.randomBytes(8).toString("hex")}`;
 
     const metadata = await processDocumentAndStore(docId, chunks, pages, filename);
+
+    // Perform Multimodal Ingestion (extracting images, generating descriptions with Gemini, saving to indexes)
+    await processMultimodalIngestion(docId, file.buffer, pages, filename);
 
     console.log(`✅ PDF Ingested Successfully! Doc ID: ${docId}, Pages: ${pages}, Chunks: ${totalChunks}`);
 

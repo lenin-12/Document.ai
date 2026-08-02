@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
 import { UploadCard } from "./components/dashboard/UploadCard";
 import { ProcessingLoader } from "./components/dashboard/ProcessingLoader";
@@ -21,6 +21,37 @@ export function App() {
   const [messages, setMessages] = useState([]);
   const [globalError, setGlobalError] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Programmatically trigger the hidden file picker
+  const triggerFilePicker = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
+  };
+
+  // Handle file selection from the shared file picker
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      
+      // Validate PDF format
+      if (file.type !== "application/pdf" && !file.name.endsWith(".pdf")) {
+        setGlobalError("Please select a valid PDF document (.pdf).");
+        return;
+      }
+      
+      // Validate 25MB file size
+      if (file.size > 25 * 1024 * 1024) {
+        setGlobalError("File size exceeds 25MB limit.");
+        return;
+      }
+
+      setGlobalError(null);
+      handleUpload(file);
+    }
+  };
 
   // Load document history from localStorage on startup
   useEffect(() => {
@@ -221,6 +252,7 @@ export function App() {
       onRenameDoc={handleRenameDocFromSidebar}
       onNewUpload={handleNewUpload}
       onOpenSettings={() => setIsSettingsOpen(true)}
+      onTriggerUpload={triggerFilePicker}
     >
       {/* Global Error Banner */}
       {globalError && (
@@ -253,6 +285,7 @@ export function App() {
                 onUploadSuccess={handleUpload}
                 isProcessing={isProcessing}
                 setIsProcessing={setIsProcessing}
+                onTriggerUpload={triggerFilePicker}
               />
 
               {/* Quick Actions Shortcuts Grid */}
@@ -288,6 +321,15 @@ export function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* Hidden file input shared across navbar and dashboard card */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,application/pdf"
+        onChange={handleFileChange}
+        style={{ display: "none" }}
       />
     </DashboardLayout>
   );

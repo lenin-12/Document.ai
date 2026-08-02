@@ -2,12 +2,11 @@ import React, { useState, useRef } from "react";
 import { UploadCloud, FileText, CheckCircle, AlertCircle, Sparkles, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
 
-export function UploadCard({ onUploadSuccess, isProcessing, setIsProcessing }) {
+export function UploadCard({ onUploadSuccess, isProcessing, setIsProcessing, onTriggerUpload }) {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState(null);
-  const inputRef = useRef(null);
 
   const validateFile = (file) => {
     if (!file) return false;
@@ -59,12 +58,7 @@ export function UploadCard({ onUploadSuccess, isProcessing, setIsProcessing }) {
     }
   };
 
-  const handleChange = (e) => {
-    e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
-      processFile(e.target.files[0]);
-    }
-  };
+
 
   return (
     <motion.div
@@ -77,7 +71,7 @@ export function UploadCard({ onUploadSuccess, isProcessing, setIsProcessing }) {
         onDragOver={handleDrag}
         onDragLeave={handleDrag}
         onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
+        onClick={onTriggerUpload}
         className={`relative group cursor-pointer rounded-2xl p-8 transition-all duration-300 overflow-hidden backdrop-blur-xl border ${
           dragActive
             ? "border-brand-purple bg-brand-purple/10 shadow-glow-purple scale-[1.01]"
@@ -88,14 +82,7 @@ export function UploadCard({ onUploadSuccess, isProcessing, setIsProcessing }) {
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-brand-purple/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-brand-cyan/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
 
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".pdf,application/pdf"
-          onChange={handleChange}
-          className="hidden"
-          disabled={isProcessing}
-        />
+
 
         <div className="relative z-10 flex flex-col items-center text-center">
           {/* Glowing Upload Icon Badge */}

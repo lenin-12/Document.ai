@@ -11,6 +11,7 @@ export function DashboardLayout({
   onRenameDoc,
   onNewUpload,
   onOpenSettings,
+  onTriggerUpload,
 }) {
   return (
     <div className="h-screen w-screen bg-[#050816] text-slate-100 flex flex-col overflow-hidden relative selection:bg-brand-purple selection:text-white">
@@ -23,6 +24,7 @@ export function DashboardLayout({
         currentDoc={currentDoc}
         onNewUpload={onNewUpload}
         onOpenSettings={onOpenSettings}
+        onTriggerUpload={onTriggerUpload}
       />
 
       {/* Body: Sidebar + Main Workspace */}

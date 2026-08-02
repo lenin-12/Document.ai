@@ -10,7 +10,7 @@ import {
   Command,
 } from "lucide-react";
 
-export function Navbar({ currentDoc, onNewUpload, onOpenSettings }) {
+export function Navbar({ currentDoc, onNewUpload, onOpenSettings, onTriggerUpload }) {
   const [searchQuery, setSearchQuery] = useState("");
 
   return (
@@ -45,7 +45,7 @@ export function Navbar({ currentDoc, onNewUpload, onOpenSettings }) {
       
       <div className="flex items-center space-x-2.5">
         <button
-          onClick={onNewUpload}
+          onClick={onTriggerUpload}
           className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-purple to-indigo-600 hover:from-brand-purple/90 hover:to-indigo-500 text-white shadow-glow-purple transition-all duration-200 active:scale-95"
         >
           <UploadCloud className="w-3.5 h-3.5" />
