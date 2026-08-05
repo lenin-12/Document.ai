@@ -1,20 +1,16 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { fileURLToPath } from "url";
 import { Document } from "@langchain/core/documents";
 import { getVectorStore } from "../config/vectorstore.js";
 import { extractImagesFromPage } from "./imageExtractionService.js";
 import { generateImageDescription } from "./visionService.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const STORAGE_DIR = path.join(__dirname, "../../storage");
+import { appendBM25Chunk } from "./hybridSearchService.js";
 
 /**
  * Process multimodal ingestion for a PDF file buffer.
- * It extracts images page-by-page, processes them with Gemini Vision, and saves descriptions in ChromaDB + BM25 index.
- * 
+ * It extracts images page-by-page, processes them with Gemini Vision, and saves descriptions in ChromaDB + MongoDB (BM25 index).
+ *
  * @param {string} docId - Unique document identifier
  * @param {Buffer} pdfBuffer - PDF file in memory
  * @param {number} totalPages - Total pages of the PDF
@@ -29,7 +25,7 @@ export const processMultimodalIngestion = async (docId, pdfBuffer, totalPages, f
 
   try {
     fs.writeFileSync(tempPdfPath, pdfBuffer);
-    
+
     const vectorStore = await getVectorStore(docId);
     let totalImagesProcessed = 0;
     let totalDescriptionsSaved = 0;
@@ -86,22 +82,9 @@ export const processMultimodalIngestion = async (docId, pdfBuffer, totalPages, f
             console.log(`[Multimodal Ingestion] Adding image description to ChromaDB...`);
             await vectorStore.addDocuments([imgDoc]);
 
-            // 2. Store in BM25 index on disk
-            const bm25Path = path.join(STORAGE_DIR, `bm25_${docId}.json`);
-            let bm25Data = [];
-            if (fs.existsSync(bm25Path)) {
-              try {
-                bm25Data = JSON.parse(fs.readFileSync(bm25Path, "utf8"));
-              } catch (readErr) {
-                console.error("[Multimodal Ingestion Error] Failed to parse BM25 file:", readErr.message);
-              }
-            }
-            bm25Data.push({
-              pageContent: imgDoc.pageContent,
-              metadata: imgDoc.metadata,
-            });
-            fs.writeFileSync(bm25Path, JSON.stringify(bm25Data, null, 2));
-            console.log(`[Multimodal Ingestion] Appended description to BM25 index.`);
+            // 2. Store in MongoDB BM25 index (replaces the previous storage/bm25_<docId>.json file write)
+            await appendBM25Chunk(docId, imgDoc);
+            console.log(`[Multimodal Ingestion] Appended description to MongoDB BM25 index.`);
 
             totalDescriptionsSaved++;
           } catch (imageErr) {

@@ -1,79 +1,96 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { Document } from "@langchain/core/documents";
 import { BM25Retriever } from "@langchain/community/retrievers/bm25";
 import { BaseRetriever } from "@langchain/core/retrievers";
+import { connectMongo } from "../config/mongo.js";
+import { Bm25Chunk } from "../models/Bm25chunk.model.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const STORAGE_DIR = path.join(__dirname, "../../storage");
 
-// Ensure the storage directory exists for lexical chunk files
-if (!fs.existsSync(STORAGE_DIR)) {
-  fs.mkdirSync(STORAGE_DIR, { recursive: true });
-}
-
-/**
- * Save document chunks to disk to construct the lexical BM25 index on-demand.
- * 
- * @param {string} docId - Unique document identifier
- * @param {Array} chunks - Document chunks (LangChain Document objects)
- */
 export const indexForBM25 = async (docId, chunks) => {
   try {
-    const filePath = path.join(STORAGE_DIR, `bm25_${docId}.json`);
-    const data = chunks.map((c) => ({
+    await connectMongo();
+
+    // Clear any previous chunks for this docId first (handles re-uploads of the same doc cleanly)
+    await Bm25Chunk.deleteMany({ docId });
+
+    const docs = chunks.map((c) => ({
+      docId,
       pageContent: c.pageContent,
       metadata: c.metadata,
     }));
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-    console.log(`[BM25 Indexer] Successfully indexed ${chunks.length} chunks for ${docId}`);
+
+    await Bm25Chunk.insertMany(docs);
+    console.log(`[BM25 Indexer] Successfully indexed ${chunks.length} chunks for ${docId} in MongoDB`);
   } catch (error) {
     console.error(`[BM25 Indexer Error] Failed to index chunks for ${docId}:`, error);
   }
 };
 
-/**
- * Perform lexical keyword search using BM25.
- * 
- * @param {string} docId - Unique document identifier
- * @param {string} query - The search query
- * @param {number} k - Number of documents to retrieve
- * @returns {Promise<Array>} Retrieved documents
- */
+
+export const appendBM25Chunk = async (docId, doc) => {
+  try {
+    await connectMongo();
+    await Bm25Chunk.create({
+      docId,
+      pageContent: doc.pageContent,
+      metadata: doc.metadata,
+    });
+    console.log(`[BM25 Indexer] Appended 1 chunk to MongoDB index for ${docId}`);
+  } catch (error) {
+    console.error(`[BM25 Indexer Error] Failed to append chunk for ${docId}:`, error);
+  }
+};
+
+const tokenizeForBM25Debug = (query) => {
+  if (!query) return [];
+  return query.toLowerCase().match(/[a-z0-9]+/g) || [];
+};
+
 export const retrieveBM25 = async (docId, query, k = 4) => {
   try {
-    const filePath = path.join(STORAGE_DIR, `bm25_${docId}.json`);
-    if (!fs.existsSync(filePath)) {
-      console.warn(`[BM25 Retriever] Index file not found for ${docId}`);
+    await connectMongo();
+
+    const data = await Bm25Chunk.find({ docId }).lean();
+    if (!data || data.length === 0) {
+      console.warn(`[BM25 Retriever] No indexed chunks found for ${docId}`);
       return [];
     }
-    const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    const docs = data.map((item) => new Document({
-      pageContent: item.pageContent,
-      metadata: item.metadata,
-    }));
+
+    const docs = data.map(
+      (item) =>
+        new Document({
+          pageContent: item.pageContent,
+          metadata: item.metadata,
+        })
+    );
+
     
+    const bm25Keywords = tokenizeForBM25Debug(query);
+    console.log(`[BM25 Retriever] Query: "${query}"`);
+    console.log(`[BM25 Retriever] Tokenized keywords used for matching:`, bm25Keywords);
+
     // Instantiate BM25Retriever from documents dynamically
     const bm25Retriever = await BM25Retriever.fromDocuments(docs, { k });
-    return await bm25Retriever.invoke(query);
+    const results = await bm25Retriever.invoke(query);
+
+    console.log(
+      `[BM25 Retriever] Matched ${results.length} chunk(s) for keywords [${bm25Keywords.join(", ")}]`
+    );
+
+    return results;
   } catch (error) {
     console.error(`[BM25 Retriever Error] Failed to retrieve for ${docId}:`, error);
     return [];
   }
 };
 
-/**
- * Helper function to deduplicate retrieved documents based on page content and metadata.
- * 
- * @param {Array} docs - Array of documents
- * @returns {Array} Unique documents
- */
+const buildDocKey = (doc) => {
+  return `${doc.pageContent}_page_${doc.metadata?.page || 0}_chunk_${doc.metadata?.chunkIndex || 0}`;
+};
+
 export const deduplicateDocs = (docs) => {
   const seen = new Set();
   return docs.filter((doc) => {
-    const key = `${doc.pageContent}_page_${doc.metadata?.page || 0}_chunk_${doc.metadata?.chunkIndex || 0}`;
+    const key = buildDocKey(doc);
     if (seen.has(key)) {
       return false;
     }
@@ -83,21 +100,77 @@ export const deduplicateDocs = (docs) => {
 };
 
 /**
+ * Reciprocal Rank Fusion (RRF).
+ *
+ * Combines multiple ranked result lists (e.g. vector search + BM25) into a
+ * single ranked list, based on each document's RANK POSITION in each list
+ * rather than raw scores (which aren't directly comparable between a cosine
+ * similarity retriever and a BM25 retriever).
+ *
+ * score(doc) = sum over lists containing doc of  weight / (k + rank)
+ *
+ * A document appearing near the top of BOTH lists scores higher than one
+ * appearing only in a single list, and a document ranked #1 in one list
+ * outweighs one ranked #4 in another — this is what a naive concat+dedupe
+ * cannot express, since concat+dedupe has no notion of "how relevant" each
+ * result was, only "which list saw it first."
+ *
+ * @param {Array<Array<Document>>} resultLists - e.g. [vectorDocs, bm25Docs], each already ordered best-first
+ * @param {Object} options
+ * @param {number} options.k - RRF smoothing constant (60 is the standard default from the original RRF paper)
+ * @param {Array<number>} options.weights - Optional per-list weight, same length/order as resultLists. Defaults to equal weighting (no bias toward either retriever).
+ * @returns {Array<Document>} Fused, ranked, deduplicated documents (best first)
+ */
+export const reciprocalRankFusion = (resultLists, { k = 60, weights } = {}) => {
+  const scored = new Map(); // key -> { doc, score, hits }
+
+  resultLists.forEach((list, listIdx) => {
+    const weight = weights?.[listIdx] ?? 1;
+    list.forEach((doc, rank) => {
+      const key = buildDocKey(doc);
+      const contribution = weight * (1 / (k + rank + 1));
+
+      if (scored.has(key)) {
+        const entry = scored.get(key);
+        entry.score += contribution;
+        entry.hits += 1;
+      } else {
+        scored.set(key, { doc, score: contribution, hits: 1 });
+      }
+    });
+  });
+
+  const fused = Array.from(scored.values()).sort((a, b) => b.score - a.score);
+
+  console.log(
+    `[RRF Fusion] Fused ${resultLists.reduce((sum, l) => sum + l.length, 0)} raw results into ${fused.length} unique documents.`
+  );
+  fused.slice(0, 5).forEach((entry, i) => {
+    const preview = entry.doc.pageContent.slice(0, 60).replace(/\n/g, " ");
+    console.log(
+      `[RRF Fusion] #${i + 1} score=${entry.score.toFixed(5)} hits=${entry.hits} page=${entry.doc.metadata?.page ?? "?"} "${preview}..."`
+    );
+  });
+
+  return fused.map((entry) => entry.doc);
+};
+
+/**
  * Unified Retrieval Layer (Hybrid Search).
- * Executes Vector search and BM25 search independently in parallel, merges and deduplicates results.
- * 
- * DESIGN NOTE: Future re-ranking models (like Cohere Rerank or Cross-Encoder) can be plugged directly
- * into this function without modifying the rest of the RAG pipeline.
- * 
+ * Executes Vector search and BM25 search independently, then fuses them
+ * with Reciprocal Rank Fusion instead of naive concat+dedupe — so a
+ * document's final rank reflects how relevant BOTH retrievers judged it
+ * to be, not just which retriever happened to return it first.
+ *
  * @param {string} docId - Unique document identifier
  * @param {string} query - The search query
- * @param {Object} options - Options containing k and the vectorStore instance
- * @returns {Promise<Array>} Deduplicated consolidated documents
+ * @param {Object} options - Options containing k, the vectorStore instance, and optional retriever weights
+ * @returns {Promise<Array>} Fused, ranked, deduplicated documents
  */
-export const retrieveHybrid = async (docId, query, { k = 4, vectorStore } = {}) => {
+export const retrieveHybrid = async (docId, query, { k = 4, vectorStore, weights } = {}) => {
   console.log(`[Hybrid Search] Executing search for query: "${query}" (k = ${k})`);
+
   
-  // 1. Run Semantic (Vector) Search on ChromaDB
   let vectorDocs = [];
   try {
     const retriever = vectorStore.asRetriever({ k });
@@ -107,7 +180,7 @@ export const retrieveHybrid = async (docId, query, { k = 4, vectorStore } = {}) 
     console.error("[Hybrid Search Error] Vector search failed:", error);
   }
 
-  // 2. Run Lexical (BM25) Search
+ 
   let bm25Docs = [];
   try {
     bm25Docs = await retrieveBM25(docId, query, k);
@@ -116,26 +189,15 @@ export const retrieveHybrid = async (docId, query, { k = 4, vectorStore } = {}) 
     console.error("[Hybrid Search Error] BM25 search failed:", error);
   }
 
-  // 3. Merge results from both retrieval engines
-  const combinedDocs = [...vectorDocs, ...bm25Docs];
-
-  // 4. Deduplicate the combined retrieved documents (Requirement 8)
-  const uniqueDocs = deduplicateDocs(combinedDocs);
-  console.log(`[Hybrid Search] Unified and deduplicated to ${uniqueDocs.length} unique documents.`);
-
-  // 5. Future Re-ranking Plug-in Point (Requirement 15)
-  // Re-ranking models (such as Cross-Encoders or Reciprocal Rank Fusion) can be added here:
-  // const reRankedDocs = await reRank(uniqueDocs, query, k);
-  // return reRankedDocs;
   
-  return uniqueDocs;
+  const fusedDocs = reciprocalRankFusion([vectorDocs, bm25Docs], { weights });
+
+  console.log(`[Hybrid Search] Returning top ${Math.min(fusedDocs.length, k * 2)} fused documents.`);
+
+  return fusedDocs.slice(0, k * 2);
 };
 
-/**
- * Custom LangChain Retriever wrapper for Hybrid Search.
- * Extends BaseRetriever so that it can be passed as a drop-in replacement
- * into any LangChain chain, including MultiQueryRetriever.
- */
+
 export class HybridRetriever extends BaseRetriever {
   static lc_name() {
     return "HybridRetriever";

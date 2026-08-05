@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { DashboardLayout } from "./components/layout/DashboardLayout";
-import { UploadCard } from "./components/dashboard/UploadCard";
-import { ProcessingLoader } from "./components/dashboard/ProcessingLoader";
-import { QuickActions } from "./components/dashboard/QuickActions";
-import { SummaryCard } from "./components/dashboard/SummaryCard";
-import { ChatInterface } from "./components/chat/ChatInterface";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { MainLayout } from "./layout/MainLayout";
+import { PDFChat } from "./pages/PDFChat";
+import { ResumeAnalyzer } from "./pages/ResumeAnalyzer";
 import { SettingsModal } from "./components/modals/SettingsModal";
 import { uploadPdfApi, sendQuestionStreamApi } from "./services/api";
-import { AlertCircle, Sparkles } from "lucide-react";
 
 const STORAGE_KEY = "DOCUMIND_DOCUMENT_HISTORY";
 
@@ -22,6 +19,9 @@ export function App() {
   const [globalError, setGlobalError] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const fileInputRef = useRef(null);
+
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Programmatically trigger the hidden file picker
   const triggerFilePicker = () => {
@@ -49,6 +49,12 @@ export function App() {
       }
 
       setGlobalError(null);
+
+      // Intercept upload trigger if not on Chat tab and redirect
+      if (location.pathname !== "/chat" && location.pathname !== "/") {
+        navigate("/chat");
+      }
+
       handleUpload(file);
     }
   };
@@ -217,7 +223,6 @@ export function App() {
 
   const handleQuickActionSelect = (promptText) => {
     if (step === 1 && documentsHistory.length > 0) {
-      // If user clicks quick action on main screen and history exists, load most recent doc
       const mostRecent = documentsHistory[0];
       setDocData(mostRecent);
       setStep(3);
@@ -244,78 +249,48 @@ export function App() {
   };
 
   return (
-    <DashboardLayout
-      currentDoc={docData}
-      documents={documentsHistory}
-      onSelectDoc={handleSelectDocFromSidebar}
-      onDeleteDoc={handleDeleteDocFromSidebar}
-      onRenameDoc={handleRenameDocFromSidebar}
-      onNewUpload={handleNewUpload}
-      onOpenSettings={() => setIsSettingsOpen(true)}
-      onTriggerUpload={triggerFilePicker}
-    >
-      {/* Global Error Banner */}
-      {globalError && (
-        <div className="bg-red-500/10 border-b border-red-500/20 px-4 py-2.5 text-center text-xs text-red-400 flex items-center justify-center space-x-2 z-40">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{globalError}</span>
-        </div>
-      )}
-
-      {/* WORKSPACE VIEW 1: Upload & Dashboard Landing */}
-      {step === 1 && (
-        <div className="flex-1 flex flex-col justify-center px-4 py-8 max-w-5xl mx-auto w-full">
-          {isProcessing ? (
-            <ProcessingLoader filename={processingFilename} />
-          ) : (
-            <>
-              {/* Header intro */}
-              <div className="text-center mb-8">
-            
-                <h1 className="font-heading font-extrabold text-3xl sm:text-4xl text-white tracking-tight">
-                  Analyze & Chat with PDFs in Seconds
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto mt-2 leading-relaxed">
-                  Transforms PDF documents into interactive AI conversations.
-                </p>
-              </div>
-
-              {/* Upload Card */}
-              <UploadCard
-                onUploadSuccess={handleUpload}
+    <>
+      <Routes>
+        <Route
+          element={
+            <MainLayout
+              currentDoc={docData}
+              documents={documentsHistory}
+              onSelectDoc={handleSelectDocFromSidebar}
+              onDeleteDoc={handleDeleteDocFromSidebar}
+              onRenameDoc={handleRenameDocFromSidebar}
+              onNewUpload={handleNewUpload}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onTriggerUpload={triggerFilePicker}
+              globalError={globalError}
+            />
+          }
+        >
+          <Route path="/" element={<Navigate to="/chat" replace />} />
+          <Route
+            path="/chat"
+            element={
+              <PDFChat
+                step={step}
+                docData={docData}
                 isProcessing={isProcessing}
+                processingFilename={processingFilename}
+                isChatLoading={isChatLoading}
+                messages={messages}
+                handleUpload={handleUpload}
                 setIsProcessing={setIsProcessing}
-                onTriggerUpload={triggerFilePicker}
+                triggerFilePicker={triggerFilePicker}
+                handleQuickActionSelect={handleQuickActionSelect}
+                handleStartChat={handleStartChat}
+                handleSendMessage={handleSendMessage}
+                handleNewUpload={handleNewUpload}
               />
-
-              {/* Quick Actions Shortcuts Grid */}
-              <QuickActions onActionSelect={handleQuickActionSelect} />
-            </>
-          )}
-        </div>
-      )}
-
-      {/* WORKSPACE VIEW 2: Executive Summary Card */}
-      {step === 2 && docData && (
-        <div className="flex-1 flex flex-col justify-center px-4 py-8 max-w-5xl mx-auto w-full">
-          <SummaryCard
-            docData={docData}
-            onStartChat={handleStartChat}
-            onQuickPrompt={handleSendMessage}
+            }
           />
-        </div>
-      )}
-
-      {/* WORKSPACE VIEW 3: Full Dual-Pane Chat Interface */}
-      {step === 3 && docData && (
-        <ChatInterface
-          docData={docData}
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          isLoading={isChatLoading}
-          onNewUpload={handleNewUpload}
-        />
-      )}
+          <Route path="/resume-analyzer" element={<ResumeAnalyzer />} />
+          <Route path="*" element={<Navigate to="/chat" replace />} />
+        </Route>
+      </Routes>
 
       {/* System Settings Modal */}
       <SettingsModal
@@ -331,7 +306,7 @@ export function App() {
         onChange={handleFileChange}
         style={{ display: "none" }}
       />
-    </DashboardLayout>
+    </>
   );
 }
 

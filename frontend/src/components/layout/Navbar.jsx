@@ -8,15 +8,23 @@ import {
   UploadCloud,
   ChevronRight,
   Command,
+  Menu,
 } from "lucide-react";
 
-export function Navbar({ currentDoc, onNewUpload, onOpenSettings, onTriggerUpload }) {
+export function Navbar({ currentDoc, onNewUpload, onOpenSettings, onTriggerUpload, onToggleMobileSidebar }) {
   const [searchQuery, setSearchQuery] = useState("");
 
   return (
     <header className="h-14 bg-dark-950/80 backdrop-blur-xl border-b border-card-border px-4 flex items-center justify-between sticky top-0 z-40 select-none">
      
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={onToggleMobileSidebar}
+          className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] border border-transparent transition-all mr-1"
+          title="Toggle menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
         <div
           onClick={onNewUpload}
           className="flex items-center space-x-2.5 cursor-pointer group"

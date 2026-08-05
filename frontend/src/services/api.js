@@ -2,7 +2,7 @@ import axios from "axios";
 
 
 const api = axios.create({
-  baseURL: "http://localhost:5001/api",
+  baseURL: "http://localhost:5002/api",
 });
 
 export const uploadPdfApi = async (file, onUploadProgress) => {
@@ -36,7 +36,7 @@ export const sendQuestionApi = async (docId, question) => {
 };
 
 export const sendQuestionStreamApi = async (docId, question, { onMetadata, onToken, onError }) => {
-  const response = await fetch("http://localhost:5001/api/chat", {
+  const response = await fetch("http://localhost:5002/api/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -83,5 +83,24 @@ export const sendQuestionStreamApi = async (docId, question, { onMetadata, onTok
       }
     }
   }
+};
+
+export const analyzeResumeApi = async (resumeFile, jdFile, jobDescriptionText) => {
+  const formData = new FormData();
+  formData.append("resume", resumeFile);
+  if (jdFile) {
+    formData.append("jdFile", jdFile);
+  }
+  if (jobDescriptionText) {
+    formData.append("jobDescription", jobDescriptionText);
+  }
+
+  const response = await api.post("/resume/analyze", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+
+  return response.data;
 };
 

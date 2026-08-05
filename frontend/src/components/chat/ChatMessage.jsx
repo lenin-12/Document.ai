@@ -42,7 +42,7 @@ export function ChatMessage({ message, docName = "Document.pdf" }) {
         {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
       </div>
 
-      {/* Message Bubble Body */}
+    
       <div
         className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 transition-all ${
           isUser
@@ -50,7 +50,7 @@ export function ChatMessage({ message, docName = "Document.pdf" }) {
             : "bg-white/[0.035] border border-white/[0.08] backdrop-blur-xl text-slate-100 rounded-tl-none"
         }`}
       >
-        {/* Header Badge for AI */}
+        
         {!isUser && (
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06] text-xs">
             <div className="flex items-center space-x-2">
@@ -58,12 +58,12 @@ export function ChatMessage({ message, docName = "Document.pdf" }) {
               {message.answerType === "rag" ? (
                 <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   <BookOpen className="w-3 h-3" />
-                  <span>PDF Context Grounded</span>
+                  <span>PDF Context</span>
                 </span>
               ) : message.answerType === "general" ? (
                 <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
                   <Globe className="w-3 h-3" />
-                  <span>General AI Fallback</span>
+                  <span>General Answer</span>
                 </span>
               ) : null}
             </div>
@@ -78,7 +78,7 @@ export function ChatMessage({ message, docName = "Document.pdf" }) {
           </div>
         )}
 
-        {/* Loading Spinner / Stream Indicator */}
+      
         {message.isLoading && !message.text ? (
           <div className="flex items-center space-x-2 text-slate-400 py-1 text-xs">
             <Loader2 className="w-4 h-4 animate-spin text-brand-cyan" />
@@ -92,20 +92,8 @@ export function ChatMessage({ message, docName = "Document.pdf" }) {
           </div>
         )}
 
-        {/* Citations Section */}
-        {!isUser && message.sources && message.sources.length > 0 && (
-          <div className="mt-4 pt-3 border-t border-white/[0.08]">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center space-x-1.5">
-              <Sparkles className="w-3 h-3 text-brand-cyan" />
-              <span>Retrieved PDF Citation Sources ({message.sources.length})</span>
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {message.sources.map((src, idx) => (
-                <SourceCard key={idx} source={src} docName={docName} />
-              ))}
-            </div>
-          </div>
-        )}
+     
+        
       </div>
     </div>
   );

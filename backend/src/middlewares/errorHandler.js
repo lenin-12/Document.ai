@@ -1,5 +1,5 @@
 export const errorHandler = (err, req, res, next) => {
-  console.error("❌ API Error:", err.stack || err.message || err);
+  console.error("API Error:", err.stack || err.message || err);
 
   let statusCode = 500;
   if (err.status && typeof err.status === "number") {
@@ -15,7 +15,6 @@ export const errorHandler = (err, req, res, next) => {
     message = "File size exceeds the maximum limit of 25MB.";
   }
 
-  // Provide a crystal clear error message for OpenAI API authentication/quota issues
   if (
     message.includes("API key") ||
     message.includes("401") ||
