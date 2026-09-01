@@ -1,8 +1,10 @@
 import axios from "axios";
 
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5002";
+
 const api = axios.create({
-  baseURL: "http://localhost:5002/api",
+  baseURL: `${API_URL}/api`,
 });
 
 export const uploadPdfApi = async (file, onUploadProgress) => {
@@ -36,7 +38,7 @@ export const sendQuestionApi = async (docId, question) => {
 };
 
 export const sendQuestionStreamApi = async (docId, question, { onMetadata, onToken, onError }) => {
-  const response = await fetch("http://localhost:5002/api/chat", {
+  const response = await fetch(`${API_URL}/api/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

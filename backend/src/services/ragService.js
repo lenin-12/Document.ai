@@ -5,6 +5,7 @@ import { getVectorStore, createVectorStoreFromDocuments } from "../config/vector
 import { MultiQueryRetriever } from "langchain/retrievers/multi_query";
 import { indexForBM25, HybridRetriever } from "./hybridSearchService.js";
 
+
 // Number of chunks retrieved per query for RAG context. No reranking step —
 // this is the final count used directly.
 const RETRIEVAL_K = parseInt(process.env.FINAL_CONTEXT_K, 10) || 5;
@@ -120,31 +121,48 @@ export const answerQuestion = async (docId, question) => {
 
     
     const rawDocs = await multiQueryRetriever.invoke(question);
-
-   
     const retrievedDocs = deduplicateDocuments(rawDocs);
 
-    
-    let finalDocs = retrievedDocs;
-    
+    if (!retrievedDocs || retrievedDocs.length === 0) {
+      return {
+        answer: "I couldn't find this information in the uploaded PDF.",
+        answerType: "general",
+        sources: [],
+        documentInfo: {
+          filename: docMeta?.filename || "Uploaded PDF",
+          pages: docMeta?.pages || 1,
+        },
+      };
+    }
+
+
+    const finalDocs = retrievedDocs;
+
+
     if (finalDocs && finalDocs.length > 0) {
       finalDocs.forEach((doc) => {
         console.log(`Retrieved chunk\nPage ${doc.metadata.page !== undefined && doc.metadata.page !== null ? doc.metadata.page : "null"}`);
       });
-    }
 
-    
-    if (finalDocs && finalDocs.length > 0) {
       const formattedContext = finalDocs
         .map((doc, idx) => `[Source ${idx + 1} - Page ${doc.metadata.page}]:\n${doc.pageContent}`)
         .join("\n\n---\n\n");
 
       const ragPrompt = PromptTemplate.fromTemplate(
-        `You are an expert AI document assistant. Determine if the provided document context contains enough relevant information to answer the user's question.
+        `You are a PDF question-answering assistant.
+
+Answer ONLY from the supplied PDF context.
 
 Rules:
-1. If the context contains relevant information to answer the question, provide a clear, accurate, structured answer using Markdown.
-2. If the context does NOT contain information to answer the user's question, respond ONLY with the exact string "__NOT_FOUND_IN_PDF__". Do NOT add any extra text or explanation if not found.
+1. Do not use outside knowledge.
+2. Do not use your pretrained knowledge to fill missing information.
+3. Do not fabricate facts.
+4. Do not guess numbers, dates, names or table values.
+5. If the supplied context does not contain enough evidence, respond ONLY with the exact string "__NOT_FOUND_IN_PDF__". Do NOT write any other text.
+6. If the question is unrelated to the PDF, respond ONLY with the exact string "__UNRELATED_QUESTION__". Do NOT write any other text.
+7. Preserve exact values from tables when answering.
+8. Cite the page number of the supporting context.
+9. If multiple pages support the answer, cite all relevant pages.
 
 Context from Document:
 {context}
@@ -160,7 +178,18 @@ Answer:`
         question: question,
       });
 
-      
+      if (ragResponse.includes("__UNRELATED_QUESTION__")) {
+        return {
+          answer: "This question is not covered by the uploaded PDF.",
+          answerType: "general",
+          sources: [],
+          documentInfo: {
+            filename: docMeta?.filename || "Uploaded PDF",
+            pages: docMeta?.pages || 1,
+          },
+        };
+      }
+
       if (!ragResponse.includes("__NOT_FOUND_IN_PDF__")) {
         const sources = finalDocs.map((doc, idx) => ({
           id: idx + 1,
@@ -181,20 +210,8 @@ Answer:`
       }
     }
 
-    
-    const generalPrompt = PromptTemplate.fromTemplate(
-      `You are a helpful, knowledgeable AI assistant. Answer the user's question clearly, accurately, and thoroughly using Markdown formatting.
-
-User Question: {question}
-
-Answer:`
-    );
-
-    const generalChain = generalPrompt.pipe(llm).pipe(new StringOutputParser());
-    const generalAnswer = await generalChain.invoke({ question });
-
     return {
-      answer: generalAnswer.trim(),
+      answer: "I couldn't find this information in the uploaded PDF.",
       answerType: "general",
       sources: [],
       documentInfo: {
@@ -239,14 +256,8 @@ Answer:`
         },
       };
     } else {
-      const generalAnswer = `This question was not found in the uploaded PDF document **${docMeta?.filename || "PDF"}**. 
-
-Here is general AI knowledge answering your question:
-
-**"${question}"** is a general topic. *(To enable live GPT-4o General Knowledge responses, add a valid \`OPENAI_API_KEY\` in \`backend/.env\`)*.`;
-
       return {
-        answer: generalAnswer,
+        answer: "I couldn't find this information in the uploaded PDF.",
         answerType: "general",
         sources: [],
         documentInfo: {
@@ -295,18 +306,24 @@ export const answerQuestionStream = async (docId, question, { onMetadata, onToke
 
       
       const rawDocs = await multiQueryRetriever.invoke(question);
-
-      
       const retrievedDocs = deduplicateDocuments(rawDocs);
 
-     
-      let finalDocs = retrievedDocs;
-      
-      if (finalDocs && finalDocs.length > 0) {
-        finalDocs.forEach((doc) => {
-          console.log(`Retrieved chunk\nPage ${doc.metadata.page !== undefined && doc.metadata.page !== null ? doc.metadata.page : "null"}`);
+      if (!retrievedDocs || retrievedDocs.length === 0) {
+        onMetadata({
+          answerType: "general",
+          sources: [],
+          documentInfo: {
+            filename: docMeta?.filename || "Uploaded PDF",
+            pages: docMeta?.pages || 1,
+          },
         });
+        onToken("I couldn't find this information in the uploaded PDF.");
+        onEnd();
+        return;
       }
+
+
+      const finalDocs = retrievedDocs;
 
       const llm = new ChatOpenAI({
         openAIApiKey: process.env.OPENAI_API_KEY,
@@ -316,16 +333,29 @@ export const answerQuestionStream = async (docId, question, { onMetadata, onToke
       });
 
       if (finalDocs && finalDocs.length > 0) {
+        finalDocs.forEach((doc) => {
+          console.log(`Retrieved chunk\nPage ${doc.metadata.page !== undefined && doc.metadata.page !== null ? doc.metadata.page : "null"}`);
+        });
+
         const formattedContext = finalDocs
           .map((doc, idx) => `[Source ${idx + 1} - Page ${doc.metadata.page}]:\n${doc.pageContent}`)
           .join("\n\n---\n\n");
 
         const ragPrompt = PromptTemplate.fromTemplate(
-          `You are an expert AI document assistant. Determine if the provided document context contains enough relevant information to answer the user's question.
+          `You are a PDF question-answering assistant.
+
+Answer ONLY from the supplied PDF context.
 
 Rules:
-1. If the context contains relevant information to answer the question, provide a clear, accurate, structured answer using Markdown.
-2. If the context does NOT contain information to answer the user's question, respond ONLY with the exact string "__NOT_FOUND_IN_PDF__". Do NOT add any extra text or explanation if not found.
+1. Do not use outside knowledge.
+2. Do not use your pretrained knowledge to fill missing information.
+3. Do not fabricate facts.
+4. Do not guess numbers, dates, names or table values.
+5. If the supplied context does not contain enough evidence, respond ONLY with the exact string "__NOT_FOUND_IN_PDF__". Do NOT write any other text.
+6. If the question is unrelated to the PDF, respond ONLY with the exact string "__UNRELATED_QUESTION__". Do NOT write any other text.
+7. Preserve exact values from tables when answering.
+8. Cite the page number of the supporting context.
+9. If multiple pages support the answer, cite all relevant pages.
 
 Context from Document:
 {context}
@@ -343,15 +373,9 @@ Answer:`
 
         let buffer = "";
         let isFallback = false;
+        let isUnrelated = false;
 
-        // Buffer initial output to detect __NOT_FOUND_IN_PDF__.
-        // IMPORTANT: use the iterator's .next() directly rather than
-        // "for await...of" — breaking out of a for-await loop early calls
-        // the iterator's .return(), which closes the underlying stream
-        // reader. That made the stream unusable for the second read below
-        // ("Invalid state: The reader is not attached to a stream").
-        // Manual .next() calls don't trigger that auto-close, so the same
-        // stream can be safely resumed afterward.
+        // Buffer initial output to detect fallback tokens.
         const iterator = stream[Symbol.asyncIterator]();
         let next = await iterator.next();
         while (!next.done) {
@@ -360,21 +384,17 @@ Answer:`
             isFallback = true;
             break;
           }
+          if (buffer.includes("__UNRELATED_QUESTION__")) {
+            isUnrelated = true;
+            break;
+          }
           if (buffer.length >= 25) {
             break;
           }
           next = await iterator.next();
         }
 
-        if (isFallback) {
-          const generalPrompt = PromptTemplate.fromTemplate(
-            `You are a helpful, knowledgeable AI assistant. Answer the user's question clearly, accurately, and thoroughly using Markdown formatting.
-
-User Question: {question}
-
-Answer:`
-          );
-          const generalChain = generalPrompt.pipe(llm).pipe(new StringOutputParser());
+        if (isUnrelated) {
           onMetadata({
             answerType: "general",
             sources: [],
@@ -383,11 +403,21 @@ Answer:`
               pages: docMeta?.pages || 1,
             },
           });
+          onToken("This question is not covered by the uploaded PDF.");
+          onEnd();
+          return;
+        }
 
-          const genStream = await generalChain.stream({ question });
-          for await (const chunk of genStream) {
-            onToken(chunk);
-          }
+        if (isFallback) {
+          onMetadata({
+            answerType: "general",
+            sources: [],
+            documentInfo: {
+              filename: docMeta?.filename || "Uploaded PDF",
+              pages: docMeta?.pages || 1,
+            },
+          });
+          onToken("I couldn't find this information in the uploaded PDF.");
           onEnd();
           return;
         } else {
@@ -412,8 +442,7 @@ Answer:`
             onToken(buffer);
           }
 
-          // Continue draining the SAME iterator (not a new for-await loop)
-          // so we resume exactly where the buffering step left off.
+          // Continue draining the SAME iterator
           next = await iterator.next();
           while (!next.done) {
             onToken(next.value);
@@ -424,15 +453,7 @@ Answer:`
         }
       }
 
-      // No docs returned from retriever -> fallback to general
-      const generalPrompt = PromptTemplate.fromTemplate(
-        `You are a helpful, knowledgeable AI assistant. Answer the user's question clearly, accurately, and thoroughly using Markdown formatting.
-
-User Question: {question}
-
-Answer:`
-      );
-      const generalChain = generalPrompt.pipe(llm).pipe(new StringOutputParser());
+      // No docs returned from retriever -> fallback to error
       onMetadata({
         answerType: "general",
         sources: [],
@@ -441,11 +462,7 @@ Answer:`
           pages: docMeta?.pages || 1,
         },
       });
-
-      const genStream = await generalChain.stream({ question });
-      for await (const chunk of genStream) {
-        onToken(chunk);
-      }
+      onToken("I couldn't find this information in the uploaded PDF.");
       onEnd();
     } else {
       // Demo Mode Hybrid Streaming Simulation

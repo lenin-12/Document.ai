@@ -99,28 +99,7 @@ export const deduplicateDocs = (docs) => {
   });
 };
 
-/**
- * Reciprocal Rank Fusion (RRF).
- *
- * Combines multiple ranked result lists (e.g. vector search + BM25) into a
- * single ranked list, based on each document's RANK POSITION in each list
- * rather than raw scores (which aren't directly comparable between a cosine
- * similarity retriever and a BM25 retriever).
- *
- * score(doc) = sum over lists containing doc of  weight / (k + rank)
- *
- * A document appearing near the top of BOTH lists scores higher than one
- * appearing only in a single list, and a document ranked #1 in one list
- * outweighs one ranked #4 in another — this is what a naive concat+dedupe
- * cannot express, since concat+dedupe has no notion of "how relevant" each
- * result was, only "which list saw it first."
- *
- * @param {Array<Array<Document>>} resultLists - e.g. [vectorDocs, bm25Docs], each already ordered best-first
- * @param {Object} options
- * @param {number} options.k - RRF smoothing constant (60 is the standard default from the original RRF paper)
- * @param {Array<number>} options.weights - Optional per-list weight, same length/order as resultLists. Defaults to equal weighting (no bias toward either retriever).
- * @returns {Array<Document>} Fused, ranked, deduplicated documents (best first)
- */
+
 export const reciprocalRankFusion = (resultLists, { k = 60, weights } = {}) => {
   const scored = new Map(); // key -> { doc, score, hits }
 
@@ -155,18 +134,7 @@ export const reciprocalRankFusion = (resultLists, { k = 60, weights } = {}) => {
   return fused.map((entry) => entry.doc);
 };
 
-/**
- * Unified Retrieval Layer (Hybrid Search).
- * Executes Vector search and BM25 search independently, then fuses them
- * with Reciprocal Rank Fusion instead of naive concat+dedupe — so a
- * document's final rank reflects how relevant BOTH retrievers judged it
- * to be, not just which retriever happened to return it first.
- *
- * @param {string} docId - Unique document identifier
- * @param {string} query - The search query
- * @param {Object} options - Options containing k, the vectorStore instance, and optional retriever weights
- * @returns {Promise<Array>} Fused, ranked, deduplicated documents
- */
+
 export const retrieveHybrid = async (docId, query, { k = 4, vectorStore, weights } = {}) => {
   console.log(`[Hybrid Search] Executing search for query: "${query}" (k = ${k})`);
 

@@ -1,6 +1,4 @@
-/**
- * Express middleware validator to check file upload fields and body params for the resume analysis endpoint.
- */
+
 export const validateResumeAnalysisRequest = (req, res, next) => {
   const files = req.files || {};
   const body = req.body || {};

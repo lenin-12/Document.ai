@@ -1,9 +1,6 @@
 import { PromptTemplate } from "@langchain/core/prompts";
 
-/**
- * Prompt template designed to compare a resume and a job description.
- * It instructs the model to return structured data in a strict JSON format.
- */
+
 export const resumeAnalysisPrompt = new PromptTemplate({
   inputVariables: ["resumeText", "jobDescriptionText"],
   template: `You are an expert technical recruiter, senior talent acquisition manager, and Applicant Tracking System (ATS) optimization professional.
