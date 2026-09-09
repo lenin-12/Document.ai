@@ -191,7 +191,7 @@ export function ResumeAnalyzer() {
             </div>
             <h3 className="font-heading font-bold text-lg text-white mb-2">Analyzing Resume Match...</h3>
             <p className="text-xs text-slate-400 max-w-sm text-center leading-relaxed">
-              Extracting text content, running semantic keyword matches, checking ATS format rules, and compiling shortlist suitability.
+            Analyzing your resume against the job description to provide personalized insights and recommendations
             </p>
           </motion.div>
         )}
