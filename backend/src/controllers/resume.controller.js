@@ -1,12 +1,8 @@
 import { analyzeResumeAndJd } from "../services/resume.service.js";
 
-/**
- * Controller to handle the Resume Analyzer API request.
- * Invokes the service to compare Resume PDF vs Job Description and returns the structured JSON report.
- */
+
 export const analyzeResumeController = async (req, res, next) => {
   try {
-    // files are populated by multer.fields()
     const files = req.files || {};
     const body = req.body || {};
 

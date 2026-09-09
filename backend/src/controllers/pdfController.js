@@ -11,7 +11,7 @@ export const uploadPdfController = async (req, res, next) => {
     const file = req.file;
     const filename = file.originalname;
 
-    console.log(`📄 Received PDF upload: ${filename} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`Received PDF upload: ${filename} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
 
     const docId = `doc_${crypto.randomBytes(8).toString("hex")}`;
 
@@ -19,7 +19,7 @@ export const uploadPdfController = async (req, res, next) => {
 
     const metadata = await processDocumentAndStore(docId, chunks, pages, filename);
 
-    console.log(`✅ PDF Ingested Successfully! Doc ID: ${docId}, Pages: ${pages}, Chunks: ${totalChunks}`);
+    console.log(`PDF Ingested Successfully! Doc ID: ${docId}, Pages: ${pages}, Chunks: ${totalChunks}`);
 
     return res.status(200).json({
       success: true,

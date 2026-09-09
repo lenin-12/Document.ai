@@ -16,7 +16,7 @@ export const parseAndChunkPdf = async (fileBuffer, filename, docId) => {
     return pageText;
   };
 
-  // Support both ES module default import and CommonJS interop
+  // Supports both ES module default import and CommonJS
   const parse = typeof pdfParse === "function" ? pdfParse : pdfParse.default;
   const pdfData = await parse(fileBuffer, { pagerender });
   const totalPages = pdfData.numpages || 1;

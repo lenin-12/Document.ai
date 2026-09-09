@@ -12,7 +12,7 @@ export const chatController = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "Question cannot be empty." });
     }
 
-    console.log(`💬 Processing streaming question for ${docId}: "${question}"`);
+    console.log(`Processing streaming question for ${docId}: "${question}"`);
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");

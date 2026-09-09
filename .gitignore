@@ -17,7 +17,7 @@ frontend/node_modules/
 .env.production.local
 backend/.env
 frontend/.env
-
+Practice/
 # ==========================================
 # 3. BUILD OUTPUTS & COMPILED ASSETS
 # ==========================================
